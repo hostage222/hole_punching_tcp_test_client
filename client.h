@@ -32,11 +32,15 @@ private:
     std::array<char, MAX_READ_SERVER_BUF_SIZE> server_read_buf;
 
     std::string friend_name;
-    boost::asio::ip::tcp::socket friend_server_socket;
-    std::vector<boost::asio::ip::tcp::socket> friend_client_sockets;
+    boost::asio::deadline_timer friend_repeat_timer;
 
+    using socket_ptr = std::shared_ptr<boost::asio::ip::tcp::socket>;
     boost::asio::ip::tcp::endpoint private_endpoint;
     boost::asio::ip::tcp::acceptor acceptor;
+    enum class state_type {wait_friend, connect_friend, communicate_friend}
+        state = state_type::wait_friend;
+    std::vector<socket_ptr> available_sockets;
+    socket_ptr friend_active_socket;
 
     void open_connection();
 
@@ -44,17 +48,34 @@ private:
     void handle_connect(std::string answer);
     void send_get_list();
     void handle_get_list(std::string answer);
+    void send_get_info();
+    void handle_get_info(std::string answer);
+
+    void activate_commutation(socket_ptr s);
+    void activate_socket(socket_ptr s);
+
+    void start_commutation(socket_ptr s);
 
     bool start_acceptor();
     void fill_private_endpoint();
 
     void start_read(void(client::*handler)(std::string));
-    size_t read_complete(boost::system::error_code ec, size_t bytes);
-    void read(std::function<void (std::string)> handler,
+    template <typename Buffer>
+    size_t read_complete(const Buffer &buf, boost::system::error_code ec,
+                         size_t bytes);
+    size_t read_complete_from_server(boost::system::error_code ec,
+                                     size_t bytes);
+    template <typename Buffer>
+    void read(const Buffer &buf, std::function<void (std::string)> handler,
               boost::system::error_code ec, size_t bytes);
+    void read_from_server(std::function<void (std::string)> handler,
+                          boost::system::error_code ec, size_t bytes);
     void close_all();
+    //categorize clients to start communication
+    bool is_active_client() { return !friend_name.empty(); }
 
     static std::string to_string(boost::asio::ip::tcp::endpoint endpoint);
+    static std::string get_token(std::string *s);
 };
 
 #endif // CLIENT_H

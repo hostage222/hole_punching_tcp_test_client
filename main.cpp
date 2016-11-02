@@ -22,7 +22,7 @@ int main(int argc, char *argv[])
             argv[2], static_cast<uint16_t>(atoi(argv[3])),
             argc == 5 ? argv[4] : "");
 
-    /*thread t{
+    thread t{
         [&cl]
         {
             try
@@ -37,17 +37,17 @@ int main(int argc, char *argv[])
             {
                 cerr << "Undefined exception" << endl;
             }
+            cout << "exit" << endl;
         }
     };
 
-    while (true)
+    /*while (true)
     {
         string message;
         getline(cin, message);
         cl->write(message);
     }*/
-
-    cl->run();
+    t.join();
 
     return 0;
 }
