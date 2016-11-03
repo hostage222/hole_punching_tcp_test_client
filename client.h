@@ -4,6 +4,7 @@
 #include <string>
 #include <array>
 #include <vector>
+#include <queue>
 #include <memory>
 #include <functional>
 #include <boost/asio.hpp>
@@ -20,7 +21,7 @@ public:
                       std::string friend_name);
 
     void run();
-    void write(std::string text);
+    void write(const std::string &text);
 
 private:
     boost::asio::io_service service;
@@ -41,6 +42,9 @@ private:
         state = state_type::wait_friend;
     std::vector<socket_ptr> available_sockets;
     socket_ptr friend_active_socket;
+    std::array<char, MAX_READ_SERVER_BUF_SIZE> friend_read_buf;
+    static constexpr size_t MAX_SAVED_OUTPUT_MESSAGES = 16;
+    std::queue<std::string> output_messages;
 
     void open_connection();
 
@@ -55,6 +59,9 @@ private:
     void activate_socket(socket_ptr s);
 
     void start_commutation(socket_ptr s);
+    void do_friend_read();
+    void handle_friend_message(std::string message);
+    void do_friend_write();
 
     bool start_acceptor();
     void fill_private_endpoint();
@@ -65,10 +72,14 @@ private:
                          size_t bytes);
     size_t read_complete_from_server(boost::system::error_code ec,
                                      size_t bytes);
+    size_t read_complete_from_friend(boost::system::error_code ec,
+                                     size_t bytes);
     template <typename Buffer>
     void read(const Buffer &buf, std::function<void (std::string)> handler,
               boost::system::error_code ec, size_t bytes);
-    void read_from_server(std::function<void (std::string)> handler,
+    void read_from_server(std::function<void(std::string)> handler,
+                          boost::system::error_code ec, size_t bytes);
+    void read_from_friend(std::function<void(std::string)> handler,
                           boost::system::error_code ec, size_t bytes);
     void close_all();
     //categorize clients to start communication

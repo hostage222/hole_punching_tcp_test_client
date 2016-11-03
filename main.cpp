@@ -4,6 +4,7 @@
 #include <exception>
 #include <thread>
 #include <string>
+#include <atomic>
 
 #include "client.h"
 
@@ -22,8 +23,9 @@ int main(int argc, char *argv[])
             argv[2], static_cast<uint16_t>(atoi(argv[3])),
             argc == 5 ? argv[4] : "");
 
+    atomic<bool> in_work{true};
     thread t{
-        [&cl]
+        [&cl, &in_work]
         {
             try
             {
@@ -37,17 +39,18 @@ int main(int argc, char *argv[])
             {
                 cerr << "Undefined exception" << endl;
             }
-            cout << "exit" << endl;
+            cout << "Press <RETURN> to close this window..." << endl;
+            in_work = false;
         }
     };
+    t.detach();
 
-    /*while (true)
+    while (in_work)
     {
         string message;
         getline(cin, message);
         cl->write(message);
-    }*/
-    t.join();
+    }
 
     return 0;
 }

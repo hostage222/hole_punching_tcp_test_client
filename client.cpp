@@ -57,9 +57,34 @@ void client::run()
     service.run();
 }
 
-void client::write(string text)
+void client::write(const string &text)
 {
-
+    service.post(
+        [self = shared_from_this(), text]
+        {
+            if (self->state == state_type::communicate_friend)
+            {
+                bool write_in_progress = !self->output_messages.empty();
+                string mes = "message " + self->name + " " + text + "\r\n";
+                self->output_messages.push(move(mes));
+                if (self->output_messages.size() > MAX_SAVED_OUTPUT_MESSAGES)
+                {
+                    cout << "<LOSTED MESSAGE>: " <<
+                            self->output_messages.front() << endl;
+                    self->output_messages.pop();
+                }
+                if (!write_in_progress)
+                {
+                    self->do_friend_write();
+                }
+            }
+            else
+            {
+                cout << "What are you doing man? I'm trying to connect." <<
+                        endl;
+            }
+        }
+    );
 }
 
 void client::open_connection()
@@ -239,7 +264,6 @@ void client::handle_get_info(string answer)
             {
                 cout << "friend private connection error: " <<
                         ec.message() << endl;
-                close_all();
             }
         }
     );
@@ -255,7 +279,6 @@ void client::handle_get_info(string answer)
             {
                 cout << "friend public connection error: " <<
                         ec.message() << endl;
-                close_all();
             }
         }
     );
@@ -386,7 +409,58 @@ void client::start_commutation(client::socket_ptr s)
     state = state_type::communicate_friend;
 
     cout << "communication started" << endl;
-    close_all();
+    do_friend_read();
+}
+
+void client::do_friend_read()
+{
+    using namespace std::placeholders;
+    async_read(*friend_active_socket, buffer(friend_read_buf),
+               bind(&client::read_complete_from_friend,
+                    shared_from_this(), _1, _2),
+               bind(&client::read_from_friend, shared_from_this(),
+                    [self = shared_from_this()](string message)
+                    { return self->handle_friend_message(move(message)); },
+                    _1, _2));
+}
+
+void client::handle_friend_message(string message)
+{
+    string title = get_token(&message);
+    string name = get_token(&message);
+    string text = move(message);
+    if (title == "message" && !name.empty() && !text.empty())
+    {
+        cout << ">> " << name << ": " << text << endl;
+        do_friend_read();
+    }
+    else
+    {
+        cout << "invalid input message" << endl;
+        close_all();
+    }
+}
+
+void client::do_friend_write()
+{
+    async_write(*friend_active_socket, buffer(output_messages.front()),
+        [this](boost_error ec, size_t)
+        {
+            if (!ec)
+            {
+                output_messages.pop();
+                if (!output_messages.empty())
+                {
+                    do_friend_write();
+                }
+            }
+            else
+            {
+                cout << "write to friend error: " << ec.message() << endl;
+                close_all();
+            }
+        }
+    );
 }
 
 bool client::start_acceptor()
@@ -428,7 +502,6 @@ bool client::start_acceptor()
             else
             {
                 cout << "accept friend error: " << ec.message() << endl;
-                close_all();
             }
         }
     );
@@ -468,7 +541,8 @@ void client::start_read(void(client::*handler)(string))
                     shared_from_this(),
                     [self = shared_from_this(), handler](std::string answer)
                     { ((*self).*handler)(move(answer)); },
-                    _1, _2));
+                    _1, _2)
+    );
 }
 
 template <typename Buffer>
@@ -511,6 +585,19 @@ size_t client::read_complete_from_server(boost_error ec, size_t bytes)
     }
 }
 
+size_t client::read_complete_from_friend(boost_error ec, size_t bytes)
+{
+    if (!ec)
+    {
+        return read_complete(friend_read_buf, ec, bytes);
+    }
+    else
+    {
+        cout << "read from friend error: " << ec.message() << endl;
+        close_all();
+    }
+}
+
 template <typename Buffer>
 void client::read(const Buffer &buf,
                   std::function<void (string)> handler,
@@ -541,6 +628,20 @@ void client::read_from_server(function<void (string)> handler,
     else
     {
         cout << "read from server error: " << ec.message() << endl;
+        close_all();
+    }
+}
+
+void client::read_from_friend(std::function<void (string)> handler,
+                              boost_error ec, size_t bytes)
+{
+    if (!ec)
+    {
+        read(friend_read_buf, handler, ec, bytes);
+    }
+    else
+    {
+        cout << "read from friend error: " << ec.message() << endl;
         close_all();
     }
 }
